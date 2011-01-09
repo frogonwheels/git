@@ -1,6 +1,7 @@
 #include "../git-compat-util.h"
 #include "win32.h"
 #include <conio.h>
+#include <winioctl.h>
 #include <wchar.h>
 #include "../strbuf.h"
 #include "../run-command.h"
@@ -453,6 +454,47 @@ static inline time_t filetime_to_time_t(const FILETIME *ft)
 {
 	return (time_t)(filetime_to_hnsec(ft) / 10000000);
 }
+
+#ifndef FSCTL_GET_REPARSE_POINT
+#define FSCTL_GET_REPARSE_POINT  0x000900a8
+#endif
+
+static int do_readlink(const wchar_t *path, wchar_t *buf, size_t bufsiz)
+{
+	HANDLE handle = CreateFileW(path, GENERIC_READ,
+			FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
+			NULL, OPEN_EXISTING,
+			FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+			NULL);
+
+	if (handle != INVALID_HANDLE_VALUE) {
+		unsigned char buffer[MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
+		DWORD dummy = 0;
+		if (DeviceIoControl(handle, FSCTL_GET_REPARSE_POINT, NULL, 0, buffer,
+			MAXIMUM_REPARSE_DATA_BUFFER_SIZE, &dummy, NULL)) {
+			REPARSE_DATA_BUFFER *b = (REPARSE_DATA_BUFFER *) buffer;
+			if (b->ReparseTag == IO_REPARSE_TAG_SYMLINK) {
+				int len = b->SymbolicLinkReparseBuffer.SubstituteNameLength / sizeof(wchar_t);
+				int offset = b->SymbolicLinkReparseBuffer.SubstituteNameOffset / sizeof(wchar_t);
+				int i;
+				len = (bufsiz < len) ? bufsiz : len;
+				wcsncpy(buf, & b->SymbolicLinkReparseBuffer.PathBuffer[offset], len);
+				for (i = 0; i < len; i++)
+					if (buf[i] == '\\')
+						buf[i] = '/';
+				buf[len] = 0;
+				CloseHandle(handle);
+				return len;
+			}
+		}
+
+		CloseHandle(handle);
+	}
+
+	errno = EINVAL;
+	return -1;
+}
+
 
 /* We keep the do_lstat code in a separate function to avoid recursion.
  * When a path ends with a slash, the stat will fail with ENOENT. In
@@ -1769,9 +1811,8 @@ sig_handler_t mingw_signal(int sig, sig_handler_t handler)
 	return old;
 }
 
-static const char *make_backslash_path(const char *path)
+static const char *make_backslash_path(const char *path, char *buf)
 {
-	static char buf[PATH_MAX + 1];
 	char *c;
 
 	if (strlcpy(buf, path, PATH_MAX) >= PATH_MAX)
@@ -1786,7 +1827,8 @@ static const char *make_backslash_path(const char *path)
 
 void mingw_open_html(const char *unixpath)
 {
-	const char *htmlpath = make_backslash_path(unixpath);
+	char buf[PATH_MAX + 1];
+	const char *htmlpath = make_backslash_path(unixpath, buf);
 	typedef HINSTANCE (WINAPI *T)(HWND, const char *,
 			const char *, const char *, const char *, INT);
 	T ShellExecute;
@@ -1834,6 +1876,51 @@ int link(const char *oldpath, const char *newpath)
 		return -1;
 	}
 	return 0;
+}
+
+int symlink(const char *oldpath, const char *newpath)
+{
+	typedef BOOL WINAPI (*symlink_fn)(const wchar_t*, const wchar_t*, DWORD);
+	static symlink_fn create_symbolic_link = NULL;
+	char buf[PATH_MAX + 1];
+	wchar_t woldpath[MAX_PATH], wnewpath[MAX_PATH];
+
+	if (utftowcs(woldpath, make_backslash_path(oldpath, buf), MAX_PATH) < 0)
+		return -1;
+	if (utftowcs(wnewpath, newpath, MAX_PATH) < 0)
+		return -1;
+
+	if (!create_symbolic_link) {
+		create_symbolic_link = (symlink_fn) GetProcAddress(
+				GetModuleHandle("kernel32.dll"), "CreateSymbolicLinkW");
+		if (!create_symbolic_link)
+			create_symbolic_link = (symlink_fn)-1;
+	}
+	if (create_symbolic_link == (symlink_fn)-1) {
+		errno = ENOSYS;
+		return -1;
+	}
+
+	if (!create_symbolic_link(wnewpath, woldpath, 0)) {
+		errno = err_win_to_posix(GetLastError());
+		return -1;
+	}
+	return 0;
+}
+
+int do_readlink(const wchar_t *path, wchar_t *buf, size_t bufsiz);
+
+int readlink(const char *path, char *buf, size_t bufsiz)
+{
+	wchar_t wpath[MAX_PATH], wbuffer[MAX_PATH];
+	int result;
+	if (utftowcs(wpath, path, MAX_PATH) < 0)
+		return -1;
+	result = do_readlink(wpath, wbuffer, MAX_PATH);
+	if (result >= 0) {
+		return wcstoutf(buf, wbuffer, bufsiz);
+ 	}
+	return -1;
 }
 
 char *getpass(const char *prompt)
