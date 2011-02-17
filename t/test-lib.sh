@@ -860,7 +860,7 @@ test_done () {
 
 		test -d "$remove_trash" &&
 		cd "$(dirname "$remove_trash")" &&
-		rm -rf "$(basename "$remove_trash")"
+		cleandir "$(basename "$remove_trash")"
 
 		exit 0 ;;
 
@@ -1056,6 +1056,10 @@ yes () {
 	done
 }
 
+cleandir () {
+	rm -rf "$1"
+}
+
 # Fix some commands on Windows
 case $(uname -s) in
 *MINGW*)
@@ -1073,6 +1077,34 @@ case $(uname -s) in
 	pwd () {
 		builtin pwd -W
 	}
+	# use mklink
+	ln () {
+
+		sym_hard=/H
+		sym_dir=
+		if test "$1" = "-s"
+		then
+			sym_hard=
+			shift
+		fi
+		builtin test -d "$1" && sym_dir=/D
+		cmd /c "mklink ${sym_hard}${sym_dir} \"${2//\\}\" \"${1//\\}\" "
+	}
+	test () {
+		case "$1" in
+		-[hL]) cmd /q /d /c "dir /b/a:l \"${2//\\}\"" > /dev/null 2> /dev/null;;
+		-f) cmd /q /d /c "dir /b/a:-d-l-s \"${2//\\}\"" > /dev/null 2> /dev/null;;
+		*) builtin test "$@";;
+		esac
+	}
+
+	cleandir () {
+		cmd /c "del /s \"${1//\\}\" 2>nul" >/dev/null
+		cmd /c "rmdir /q/s \"${1//\\}\" 2>nul" >/dev/null
+	}
+
+
+
 	# no POSIX permissions
 	# backslashes in pathspec are converted to '/'
 	# exec does not inherit the PID
@@ -1097,9 +1129,13 @@ test -z "$NO_PERL" && test_set_prereq PERL
 test -z "$NO_PYTHON" && test_set_prereq PYTHON
 
 # test whether the filesystem supports symbolic links
-ln -s x y 2>/dev/null && test -h y 2>/dev/null && test_set_prereq SYMLINKS
+touch x
+ln -s x y && echo linked && test -h y 2>/dev/null && test_set_prereq SYMLINKS && echo Found Symlink
 rm -f y
+rm -f x
 
 # When the tests are run as root, permission tests will report that
 # things are writable when they shouldn't be.
 test -w / || test_set_prereq SANITY
+
+
