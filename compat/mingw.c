@@ -4,11 +4,11 @@
 #include <winioctl.h>
 #include <wchar.h>
 #include "../strbuf.h"
-#include "../cache.h"
 #include "../run-command.h"
+#include "../cache.h"
 
-unsigned int _CRT_fmode = _O_BINARY;
 static const int delay[] = { 0, 1, 10, 20, 40 };
+unsigned int _CRT_fmode = _O_BINARY;
 
 int err_win_to_posix(DWORD winerr)
 {
@@ -123,60 +123,66 @@ int err_win_to_posix(DWORD winerr)
 	return error;
 }
 
-static int make_hidden(const wchar_t *path)
+static inline int is_file_in_use_error(DWORD errcode)
 {
-	DWORD attribs = GetFileAttributesW(path);
-	if (SetFileAttributesW(path, FILE_ATTRIBUTE_HIDDEN | attribs))
+	switch (errcode) {
+	case ERROR_SHARING_VIOLATION:
+	case ERROR_ACCESS_DENIED:
+		return 1;
+	}
+
+	return 0;
+}
+
+static int read_yes_no_answer(void)
+{
+	char answer[1024];
+
+	if (fgets(answer, sizeof(answer), stdin)) {
+		size_t answer_len = strlen(answer);
+		int got_full_line = 0, c;
+
+		/* remove the newline */
+		if (answer_len >= 2 && answer[answer_len-2] == '\r') {
+			answer[answer_len-2] = '\0';
+			got_full_line = 1;
+		} else if (answer_len >= 1 && answer[answer_len-1] == '\n') {
+			answer[answer_len-1] = '\0';
+			got_full_line = 1;
+		}
+		/* flush the buffer in case we did not get the full line */
+		if (!got_full_line)
+			while ((c = getchar()) != EOF && c != '\n')
+				;
+	} else
+		/* we could not read, return the
+		 * default answer which is no */
 		return 0;
-	errno = err_win_to_posix(GetLastError());
+
+	if (tolower(answer[0]) == 'y' && !answer[1])
+		return 1;
+	if (!strncasecmp(answer, "yes", sizeof(answer)))
+		return 1;
+	if (tolower(answer[0]) == 'n' && !answer[1])
+		return 0;
+	if (!strncasecmp(answer, "no", sizeof(answer)))
+		return 0;
+
+	/* did not find an answer we understand */
 	return -1;
 }
 
-void mingw_mark_as_git_dir(const char *dir)
+static int ask_yes_no_if_possible(const char *format, ...)
 {
-	wchar_t wdir[MAX_PATH];
-	if (hide_dotfiles != HIDE_DOTFILES_FALSE && !is_bare_repository())
-		if (utftowcs(wdir, dir, MAX_PATH) < 0 || make_hidden(wdir))
-			warning("Failed to make '%s' hidden", dir);
-	git_config_set("core.hideDotFiles",
-		hide_dotfiles == HIDE_DOTFILES_FALSE ? "false" :
-		(hide_dotfiles == HIDE_DOTFILES_DOTGITONLY ?
-		 "dotGitOnly" : "true"));
-}
-
-int mingw_mkdir(const char *path, int mode)
-{
-	int ret;
-	wchar_t wpath[MAX_PATH];
-	if (utftowcs(wpath, path, MAX_PATH) < 0)
-		return -1;
-	ret = _wmkdir(wpath);
-	if (!ret && hide_dotfiles == HIDE_DOTFILES_TRUE) {
-		/*
-		 * In Windows a file or dir starting with a dot is not
-		 * automatically hidden. So lets mark it as hidden when
-		 * such a directory is created.
-		 */
-		const char *start = basename((char*)path);
-		if (*start == '.')
-			return make_hidden(wpath);
-	}
-	return ret;
-}
-
-static int ask_user_yes_no(const char *format, ...)
-{
-	char answer[5];
 	char question[4096];
 	const char *retry_hook[] = { NULL, NULL, NULL };
 	va_list args;
 
+	va_start(args, format);
+	vsnprintf(question, sizeof(question), format, args);
+	va_end(args);
+
 	if ((retry_hook[0] = getenv("GIT_ASK_YESNO"))) {
-
-		va_start(args, format);
-		vsnprintf(question, sizeof(question), format, args);
-		va_end(args);
-
 		retry_hook[1] = question;
 		return !run_command_v_opt(retry_hook, 0);
 	}
@@ -185,30 +191,14 @@ static int ask_user_yes_no(const char *format, ...)
 		return 0;
 
 	while (1) {
-		va_start(args, format);
-		vfprintf(stderr, format, args);
-		va_end(args);
-		fprintf(stderr, " (y/n)? ");
+		int answer;
+		fprintf(stderr, "%s (y/n) ", question);
 
-		if (fgets(answer, sizeof(answer), stdin)) {
-			/* remove the newline */
-			if (answer[strlen(answer)-2] == '\r')
-				answer[strlen(answer)-2] = '\0';
-			if (answer[strlen(answer)-1] == '\n')
-				answer[strlen(answer)-1] = '\0';
-		} else
-			return 0;
+		if ((answer = read_yes_no_answer()) >= 0)
+			return answer;
 
-		if (answer[0] == 'y' && strlen(answer) == 1)
-			return 1;
-		if (!strncasecmp(answer, "yes", sizeof(answer)))
-			return 1;
-		if (answer[0] == 'n' && strlen(answer) == 1)
-			return 0;
-		if (!strncasecmp(answer, "no", sizeof(answer)))
-			return 0;
-		fprintf(stderr, "I did not understand your answer: '%s'\n",
-				answer);
+		fprintf(stderr, "Sorry, I did not understand your answer. "
+				"Please type 'y' or 'n'\n");
 	}
 }
 
@@ -222,7 +212,7 @@ int mingw_unlink(const char *pathname)
 	/* read-only files cannot be removed */
 	_wchmod(wpathname, 0666);
 	while ((ret = _wunlink(wpathname)) == -1 && tries < ARRAY_SIZE(delay)) {
-		if (errno != EACCES)
+		if (!is_file_in_use_error(GetLastError()))
 			break;
 		/*
 		 * We assume that some other process had the source or
@@ -234,8 +224,8 @@ int mingw_unlink(const char *pathname)
 		Sleep(delay[tries]);
 		tries++;
 	}
-	while (ret == -1 && errno == EACCES &&
-	       ask_user_yes_no("Unlink of file '%s' failed. "
+	while (ret == -1 && is_file_in_use_error(GetLastError()) &&
+	       ask_yes_no_if_possible("Unlink of file '%s' failed. "
 			"Should I try again?", pathname))
 	       ret = _wunlink(wpathname);
 	return ret;
@@ -268,7 +258,7 @@ int mingw_rmdir(const char *pathname)
 		return -1;
 
 	while ((ret = _wrmdir(wpathname)) == -1 && tries < ARRAY_SIZE(delay)) {
-		if (errno != EACCES)
+		if (!is_file_in_use_error(GetLastError()))
 			break;
 		if (!is_dir_empty(wpathname)) {
 			errno = ENOTEMPTY;
@@ -284,10 +274,51 @@ int mingw_rmdir(const char *pathname)
 		Sleep(delay[tries]);
 		tries++;
 	}
-	while (ret == -1 && errno == EACCES &&
-	       ask_user_yes_no("Deletion of directory '%s' failed. "
+	while (ret == -1 && is_file_in_use_error(GetLastError()) &&
+	       ask_yes_no_if_possible("Deletion of directory '%s' failed. "
 			"Should I try again?", pathname))
 	       ret = _wrmdir(wpathname);
+	return ret;
+}
+
+static int make_hidden(const wchar_t *path)
+{
+	DWORD attribs = GetFileAttributesW(path);
+	if (SetFileAttributesW(path, FILE_ATTRIBUTE_HIDDEN | attribs))
+		return 0;
+	errno = err_win_to_posix(GetLastError());
+	return -1;
+}
+
+void mingw_mark_as_git_dir(const char *dir)
+{
+	wchar_t wdir[MAX_PATH];
+	if (hide_dotfiles != HIDE_DOTFILES_FALSE)
+		if (utftowcs(wdir, dir, MAX_PATH) < 0 || make_hidden(wdir))
+			warning("Failed to make '%s' hidden", dir);
+	git_config_set("core.hideDotFiles",
+		hide_dotfiles == HIDE_DOTFILES_FALSE ? "false" :
+		(hide_dotfiles == HIDE_DOTFILES_DOTGITONLY ?
+		 "dotGitOnly" : "true"));
+}
+
+int mingw_mkdir(const char *path, int mode)
+{
+	int ret;
+	wchar_t wpath[MAX_PATH];
+	if (utftowcs(wpath, path, MAX_PATH) < 0)
+		return -1;
+	ret = _wmkdir(wpath);
+	if (!ret && hide_dotfiles == HIDE_DOTFILES_TRUE) {
+		/*
+		 * In Windows a file or dir starting with a dot is not
+		 * automatically hidden. So lets mark it as hidden when
+		 * such a directory is created.
+		 */
+		const char *start = basename((char*)path);
+		if (*start == '.')
+			return make_hidden(wpath);
+	}
 	return ret;
 }
 
@@ -1657,7 +1688,7 @@ repeat:
 		goto repeat;
 	}
 	if (gle == ERROR_ACCESS_DENIED &&
-	       ask_user_yes_no("Rename from '%s' to '%s' failed. "
+	       ask_yes_no_if_possible("Rename from '%s' to '%s' failed. "
 		       "Should I try again?", pold, pnew))
 		goto repeat;
 

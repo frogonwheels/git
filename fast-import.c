@@ -329,6 +329,7 @@ static struct mark_set *marks;
 static const char *export_marks_file;
 static const char *import_marks_file;
 static int import_marks_file_from_stream;
+static int import_marks_file_ignore_missing;
 static int relative_marks_paths;
 
 /* Our last blob */
@@ -1795,7 +1796,11 @@ static void read_marks(void)
 {
 	char line[512];
 	FILE *f = fopen(import_marks_file, "r");
-	if (!f)
+	if (f)
+		;
+	else if (import_marks_file_ignore_missing && errno == ENOENT)
+		return; /* Marks file does not exist */
+	else
 		die_errno("cannot read '%s'", import_marks_file);
 	while (fgets(line, sizeof(line), f)) {
 		uintmax_t mark;
@@ -2229,6 +2234,12 @@ static void file_change_m(struct branch *b)
 		if (*endp)
 			die("Garbage after path in: %s", command_buf.buf);
 		p = uq.buf;
+	}
+
+	/* Git does not track empty, non-toplevel directories. */
+	if (S_ISDIR(mode) && !memcmp(sha1, EMPTY_TREE_SHA1_BIN, 20) && *p) {
+		tree_content_remove(&b->branch_tree, p, NULL);
+		return;
 	}
 
 	if (S_ISGITLINK(mode)) {
@@ -2861,7 +2872,8 @@ static char* make_fast_import_path(const char *path)
 	return strbuf_detach(&abs_path, NULL);
 }
 
-static void option_import_marks(const char *marks, int from_stream)
+static void option_import_marks(const char *marks,
+					int from_stream, int ignore_missing)
 {
 	if (import_marks_file) {
 		if (from_stream)
@@ -2875,6 +2887,7 @@ static void option_import_marks(const char *marks, int from_stream)
 	import_marks_file = make_fast_import_path(marks);
 	safe_create_leading_directories_const(import_marks_file);
 	import_marks_file_from_stream = from_stream;
+	import_marks_file_ignore_missing = ignore_missing;
 }
 
 static void option_date_format(const char *fmt)
@@ -2974,7 +2987,10 @@ static int parse_one_feature(const char *feature, int from_stream)
 	if (!prefixcmp(feature, "date-format=")) {
 		option_date_format(feature + 12);
 	} else if (!prefixcmp(feature, "import-marks=")) {
-		option_import_marks(feature + 13, from_stream);
+		option_import_marks(feature + 13, from_stream, 0);
+	} else if (!prefixcmp(feature, "import-marks-if-exists=")) {
+		option_import_marks(feature + strlen("import-marks-if-exists="),
+					from_stream, 1);
 	} else if (!prefixcmp(feature, "export-marks=")) {
 		option_export_marks(feature + 13);
 	} else if (!strcmp(feature, "cat-blob")) {
@@ -2985,6 +3001,8 @@ static int parse_one_feature(const char *feature, int from_stream)
 		relative_marks_paths = 0;
 	} else if (!prefixcmp(feature, "force")) {
 		force_update = 1;
+	} else if (!strcmp(feature, "notes")) {
+		; /* do nothing; we have the feature */
 	} else {
 		return 0;
 	}

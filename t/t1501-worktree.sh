@@ -347,7 +347,7 @@ TRASH_DIRECTORY="$(cd "$TRASH_DIRECTORY" && pwd)"
 test_expect_success 'relative $GIT_WORK_TREE and git subprocesses' '
 	GIT_DIR=repo.git GIT_WORK_TREE=repo.git/work \
 	test-subprocess --setup-work-tree rev-parse --show-toplevel >actual &&
-	echo "$TRASH_DIRECTORY/repo.git/work" >expected &&
+	echo "$(pwd)/repo.git/work" >expected &&
 	test_cmp expected actual
 '
 

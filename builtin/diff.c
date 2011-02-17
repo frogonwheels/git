@@ -135,7 +135,7 @@ static int builtin_diff_index(struct rev_info *revs,
 	    revs->max_count != -1 || revs->min_age != -1 ||
 	    revs->max_age != -1)
 		usage(builtin_diff_usage);
-	if (read_cache_preload(revs->diffopt.paths) < 0) {
+	if (read_cache_preload(revs->diffopt.pathspec.raw) < 0) {
 		perror("read_cache_preload");
 		return -1;
 	}
@@ -237,7 +237,7 @@ static int builtin_diff_files(struct rev_info *revs, int argc, const char **argv
 		revs->combine_merges = revs->dense_combined_merges = 1;
 
 	setup_work_tree();
-	if (read_cache_preload(revs->diffopt.paths) < 0) {
+	if (read_cache_preload(revs->diffopt.pathspec.raw) < 0) {
 		perror("read_cache_preload");
 		return -1;
 	}
@@ -330,8 +330,11 @@ int cmd_diff(int argc, const char **argv, const char *prefix)
 			else if (!strcmp(arg, "--cached") ||
 				 !strcmp(arg, "--staged")) {
 				add_head_to_pending(&rev);
-				if (!rev.pending.nr)
-					die("No HEAD commit to compare with (yet)");
+				if (!rev.pending.nr) {
+					struct tree *tree;
+					tree = lookup_tree((const unsigned char*)EMPTY_TREE_SHA1_BIN);
+					add_pending_object(&rev, &tree->object, "HEAD");
+				}
 				break;
 			}
 		}
@@ -371,14 +374,10 @@ int cmd_diff(int argc, const char **argv, const char *prefix)
 		}
 		die("unhandled object '%s' given.", name);
 	}
-	if (rev.prune_data) {
-		const char **pathspec = rev.prune_data;
-		while (*pathspec) {
-			if (!path)
-				path = *pathspec;
-			paths++;
-			pathspec++;
-		}
+	if (rev.prune_data.nr) {
+		if (!path)
+			path = rev.prune_data.items[0].match;
+		paths += rev.prune_data.nr;
 	}
 
 	/*
