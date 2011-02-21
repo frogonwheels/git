@@ -274,11 +274,24 @@ test_expect_success 'adding various types of objects with git update-index --add
 			echo "hello $p" >$p || exit 1
 			if test_have_prereq SYMLINKS
 			then
+				# Create files for msys
+				path=${p%/*}/
+				if [ "${path}" == "${p}/" ] ; then
+					path=
+				fi
+				linkfile="${path}hello $p"
+				linkpath="${linkfile%/*}"
+
+				if [ "${linkpath}" != "${linkfile}" ] ; then
+					mkdir -p "${linkpath}"
+				fi
+				touch "${linkfile}"
+
 				ln -s "hello $p" ${p}sym || exit 1
 			fi
 		done
 	) &&
-	find path* ! -type d -print | xargs git update-index --add
+	find path* ! -type d -print | grep -v hello| xargs git update-index --add
 '
 
 # Show them and see that matches what we expect.
