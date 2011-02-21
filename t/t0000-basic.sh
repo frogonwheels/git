@@ -164,7 +164,7 @@ EOF
     test_must_fail ./failing-cleanup.sh >out 2>err &&
     ! test -s err &&
     ! test -f \"trash directory.failing-cleanup/clean-after-failure\" &&
-sed -e 's/Z$//' -e 's/^> //' >expect <<\EOF &&
+sed -e 's/Z$//' -e 's/^> //' >expect <<EOF &&
 > not ok - 1 tests clean up even after a failure
 > #	Z
 > #	    touch clean-after-failure &&
@@ -226,6 +226,9 @@ test_expect_success \
 # Some filesystems do not support symblic links; on such systems
 # some expected values are different
 mkdir path2 path3 path3/subp3
+mkdir "hello path2" "hello path3" "path3/hello path3" "path2/hello path2" "path3/hello path3"
+mkdir "path3/subp3/hello path3" "path3/subp3/hello path3/subp3"
+touch "path3/hello path3/file3" "hello path0" "path2/hello path2/file2" "path3/hello path3/file3" "path3/subp3/hello path3/subp3/file3"
 paths='path0 path2/file2 path3/file3 path3/subp3/file3'
 for p in $paths
 do
@@ -250,7 +253,7 @@ fi
 
 test_expect_success \
     'adding various types of objects with git update-index --add.' \
-    'find path* ! -type d -print | xargs git update-index --add'
+    'find path* ! -type d -print |grep -v hello | xargs git update-index --add'
 
 # Show them and see that matches what we expect.
 test_expect_success \
