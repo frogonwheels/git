@@ -1015,7 +1015,29 @@ case "$test" in
  *) TRASH_DIRECTORY="$TEST_DIRECTORY/$test" ;;
 esac
 test ! -z "$debug" || remove_trash=$TRASH_DIRECTORY
-rm -fr "$test" || {
+
+cleandir () {
+	rm -rf "$1"
+}
+case $(uname -s) in
+*MINGW*)
+	winpath () {
+		echo $(echo "$1"|sed 's+^/\([a-z]\)/+\1:/+' |sed 's+/+\\+g')
+	}
+	cleandir () {
+		if test -d "$1" ; then
+		#cmd /c "del /s/q/f \"${1//\\}\""
+		#cmd /c "rmdir /q/s \"${1//\\}\""
+		echo >&5 "Cleaning $1"
+		cmd /c "del /s/q/f \"$(winpath "${1}")\" 2>nul" >/dev/null
+		cmd /c "rmdir /q/s \"$(winpath "${1}")\" 2>nul" >/dev/null
+		fi
+	}
+	;;
+esac
+
+
+cleandir "$test" || {
 	GIT_EXIT_OK=t
 	echo >&5 "FATAL: Cannot prepare test area"
 	exit 1
@@ -1037,7 +1059,7 @@ do
 	$skp)
 		say_color skip >&3 "skipping test $this_test altogether"
 		skip_all="skip all tests in $this_test"
-		test_done
+		test_done;;
 	esac
 done
 
@@ -1054,10 +1076,6 @@ yes () {
 	do
 		:
 	done
-}
-
-cleandir () {
-	rm -rf "$1"
 }
 
 # Fix some commands on Windows
@@ -1088,22 +1106,21 @@ case $(uname -s) in
 			shift
 		fi
 		builtin test -d "$1" && sym_dir=/D
-		cmd /c "mklink ${sym_hard}${sym_dir} \"${2//\\}\" \"${1//\\}\" "
+		cmd /c "mklink ${sym_hard}${sym_dir} \"$(winpath "$2")\" \"$(winpath "$1")\">/dev/null " 2>/dev/null
 	}
 	test () {
 		case "$1" in
-		-[hL]) cmd /q /d /c "dir /b/a:l \"${2//\\}\"" > /dev/null 2> /dev/null;;
-		-f) cmd /q /d /c "dir /b/a:-d-l-s \"${2//\\}\"" > /dev/null 2> /dev/null;;
+			-[hL])
+				file=$(cmd /c "@dir /b/a:l \"$(winpath "${2}")\" 2> nul" )
+				builtin test -n "${file}"
+			;;
+		-f)
+			file=$(cmd /c "@dir /b/a:-d-l-s \"$(winpath "${2}")\" 2> nul" )
+			builtin test -n "${file}"
+			;;
 		*) builtin test "$@";;
 		esac
 	}
-
-	cleandir () {
-		cmd /c "del /s \"${1//\\}\" 2>nul" >/dev/null
-		cmd /c "rmdir /q/s \"${1//\\}\" 2>nul" >/dev/null
-	}
-
-
 
 	# no POSIX permissions
 	# backslashes in pathspec are converted to '/'
@@ -1130,7 +1147,7 @@ test -z "$NO_PYTHON" && test_set_prereq PYTHON
 
 # test whether the filesystem supports symbolic links
 touch x
-ln -s x y && echo linked && test -h y 2>/dev/null && test_set_prereq SYMLINKS && echo Found Symlink
+ln -s x y && test -h y 2>/dev/null && test_set_prereq SYMLINKS
 rm -f y
 rm -f x
 
