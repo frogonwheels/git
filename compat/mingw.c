@@ -510,7 +510,7 @@ static int do_lstat(int follow, const char *file_name, struct stat *buf)
 	if (utftowcs(wfilename, file_name, MAX_PATH) < 0)
 		return -1;
 
-	if (GetFileAttributesExW(wfilename, GetFileExInfoStandard, &fdata)) {
+	while (GetFileAttributesExW(wfilename, GetFileExInfoStandard, &fdata)) {
 		buf->st_ino = 0;
 		buf->st_gid = 0;
 		buf->st_uid = 0;
@@ -528,20 +528,30 @@ static int do_lstat(int follow, const char *file_name, struct stat *buf)
 			if (handle != INVALID_HANDLE_VALUE) {
 				if ((findbuf.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
 						(findbuf.dwReserved0 == IO_REPARSE_TAG_SYMLINK)) {
-					if (follow) {
-						char buffer[MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
-						buf->st_size = readlink(file_name, buffer, MAXIMUM_REPARSE_DATA_BUFFER_SIZE);
+					if (!follow) {
+						wchar_t buffer[MAX_PATH];
+						buf->st_size = do_readlink(wfilename, buffer, MAX_PATH);
+						buf->st_mode = S_IFLNK;
+						buf->st_mode |= S_IREAD;
+						if (!(findbuf.dwFileAttributes & FILE_ATTRIBUTE_READONLY))
+							buf->st_mode |= S_IWRITE;
+						FindClose(handle);
+						return 0;
 					} else {
 						buf->st_mode = S_IFLNK;
+						if (do_readlink(wfilename, wfilename, MAX_PATH) <= 0) {
+							FindClose(handle);
+							break;
+						}
+						/* Otherwise Continue
+						 */
 					}
-					buf->st_mode |= S_IREAD;
-					if (!(findbuf.dwFileAttributes & FILE_ATTRIBUTE_READONLY))
-						buf->st_mode |= S_IWRITE;
 				}
 				FindClose(handle);
 			}
 		}
-		return 0;
+		else
+			return 0;
 	}
 	switch (GetLastError()) {
 	case ERROR_ACCESS_DENIED:
