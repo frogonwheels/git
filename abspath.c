@@ -11,8 +11,10 @@ int is_directory(const char *path)
 	return (!stat(path, &st) && S_ISDIR(st.st_mode));
 }
 
+
 /* We allow "recursive" symbolic links. Only within reason, though. */
 #define MAXDEPTH 5
+
 
 const char *make_absolute_path(const char *path)
 {
