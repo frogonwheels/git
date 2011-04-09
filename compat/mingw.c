@@ -423,12 +423,86 @@ int mingw_access(const char *filename, int mode)
 	return _waccess(wfilename, mode & ~X_OK);
 }
 
+static int do_wlstat(int follow, const wchar_t *wfilename, struct stat *buf, wchar_t *wbuffer, int buffersize);
+static int do_readlink(const wchar_t *path, wchar_t *buf, size_t bufsiz);
+
+/*
+ * When changing to a directory that contains symbolic links in the path,
+ * we need to follow the unix behaviour, which is to unravel the symbolic links.
+ *
+ * Windows seems to leave the symbolic links intact.
+ * This breaks functions like make_absolute_path() that requires the unix behaviour to work.
+ *
+ * It is important that on failure, we remain in the original directory we
+ * started in.
+ */
+static int do_chdir(wchar_t *dirname, int depth)
+{
+	wchar_t *cur = dirname, *next_elem;
+	int ret;
+	struct stat st;
+	wchar_t cwd[MAX_PATH];
+	if (!_wgetcwd(cwd, MAX_PATH))
+		die_errno ("Could not get current working directory");
+	while (cur && *cur) {
+		wchar_t *first_slash;
+
+		first_slash = wcschr(cur+1, '/');
+		if (first_slash) {
+			next_elem=first_slash+1;
+			*first_slash = '\0';
+			/* Skip doubled slashes */
+			while (*next_elem && *next_elem == '/')
+				++next_elem;
+		} else
+			next_elem = 0;
+
+		ret = do_wlstat(0, cur, &st, NULL, 0);
+		if (ret != 0) {
+			/* Failed - restore working directory
+			 */
+			_wchdir(cwd);
+			return ret;
+		}
+
+		if (S_ISLNK(st.st_mode)) {
+			wchar_t link[MAX_PATH+1];
+			ssize_t len = do_readlink(cur, link, MAX_PATH);
+			if (len < 0)
+				die_errno ("Invalid symlink in path '%ls'", dirname);
+			if (MAX_PATH <= len)
+				die("symbolic link too long in path: %ls", dirname);
+			if (depth > 5)
+				die("symbolic links nested too deep in path: %ls", dirname);
+			ret = do_chdir(link, depth+1);
+		} else {
+			int len = wcslen(cur);
+			if (len >0 && cur[len-1]==':') {
+				wchar_t drivepath[len+2];
+				wcscpy(drivepath, cur);
+				drivepath[len]='/';
+				drivepath[len+1]='\0';
+				ret = _wchdir(drivepath);
+			} else
+				ret = _wchdir(cur);
+		}
+		if (ret!= 0) {
+			/* Failed - restore working directory
+			 */
+			_wchdir(cwd);
+			return ret;
+		}
+		cur = next_elem;
+	}
+	return 0;
+}
 int mingw_chdir(const char *dirname)
 {
-	wchar_t wdirname[MAX_PATH];
-	if (utftowcs(wdirname, dirname, MAX_PATH) < 0)
+	wchar_t buf[MAX_PATH+1];
+	if (utftowcs(buf, dirname, MAX_PATH) < 0)
 		return -1;
-	return _wchdir(wdirname);
+
+	return do_chdir(buf, 0);
 }
 
 int mingw_chmod(const char *filename, int mode)
@@ -495,20 +569,9 @@ static int do_readlink(const wchar_t *path, wchar_t *buf, size_t bufsiz)
 	return -1;
 }
 
-
-/* We keep the do_lstat code in a separate function to avoid recursion.
- * When a path ends with a slash, the stat will fail with ENOENT. In
- * this case, we strip the trailing slashes and stat again.
- *
- * If follow is true then act like stat() and report on the link
- * target. Otherwise report on the link itself.
- */
-static int do_lstat(int follow, const char *file_name, struct stat *buf)
+static int do_wlstat(int follow, const wchar_t *wfilename, struct stat *buf, wchar_t *wbuffer, int buffersize)
 {
 	WIN32_FILE_ATTRIBUTE_DATA fdata;
-	wchar_t wfilename[MAX_PATH];
-	if (utftowcs(wfilename, file_name, MAX_PATH) < 0)
-		return -1;
 
 	while (GetFileAttributesExW(wfilename, GetFileExInfoStandard, &fdata)) {
 		buf->st_ino = 0;
@@ -528,7 +591,7 @@ static int do_lstat(int follow, const char *file_name, struct stat *buf)
 			if (handle != INVALID_HANDLE_VALUE) {
 				if ((findbuf.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) &&
 						(findbuf.dwReserved0 == IO_REPARSE_TAG_SYMLINK)) {
-					if (!follow) {
+					if (!follow || !wbuffer) {
 						wchar_t buffer[MAX_PATH];
 						buf->st_size = do_readlink(wfilename, buffer, MAX_PATH);
 						buf->st_mode = S_IFLNK;
@@ -539,12 +602,13 @@ static int do_lstat(int follow, const char *file_name, struct stat *buf)
 						return 0;
 					} else {
 						buf->st_mode = S_IFLNK;
-						if (do_readlink(wfilename, wfilename, MAX_PATH) <= 0) {
+						if (do_readlink(wfilename, wbuffer, buffersize) <= 0) {
 							FindClose(handle);
 							break;
 						}
-						/* Otherwise Continue
+						/* Now continuing using link in passed-in buffer.
 						 */
+						wfilename = wbuffer;
 					}
 				}
 				FindClose(handle);
@@ -571,6 +635,21 @@ static int do_lstat(int follow, const char *file_name, struct stat *buf)
 		break;
 	}
 	return -1;
+}
+
+/* We keep the do_lstat code in a separate function to avoid recursion.
+ * When a path ends with a slash, the stat will fail with ENOENT. In
+ * this case, we strip the trailing slashes and stat again.
+ *
+ * If follow is true then act like stat() and report on the link
+ * target. Otherwise report on the link itself.
+ */
+static int do_lstat(int follow, const char *file_name, struct stat *buf)
+{
+	wchar_t wfilename[MAX_PATH];
+	if (utftowcs(wfilename, file_name, MAX_PATH) < 0)
+		return -1;
+	return do_wlstat(follow, wfilename, buf, wfilename, MAX_PATH);
 }
 
 /* We provide our own lstat/fstat functions, since the provided
