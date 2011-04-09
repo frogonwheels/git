@@ -602,6 +602,10 @@ yes () {
 	done
 }
 
+abspath_of_dir () {
+	(cd "$1" ; pwd -P)
+}
+
 # Fix some commands on Windows
 case $(uname -s) in
 *MINGW*)
@@ -647,6 +651,11 @@ case $(uname -s) in
 		*) builtin test "$@";;
 		esac
 	}
+
+	abspath_of_dir () {
+		(cd "$1" ; pwd -P | sed 's+^/\([a-z]\)\/+\1:/+')
+	}
+
 	# no POSIX permissions
 	# backslashes in pathspec are converted to '/'
 	# exec does not inherit the PID
