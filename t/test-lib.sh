@@ -1096,7 +1096,9 @@ case $(uname -s) in
 			sym_hard=
 			shift
 		fi
+		pushd $(dirname "$2") 2>&1 > /dev/null
 		builtin test -d "$1" && sym_dir=/D
+		popd > /dev/null 2> /dev/null
 		cmd /c "mklink ${sym_hard}${sym_dir} \"$(winpath "$2")\" \"$(winpath "$1")\">/dev/null " 2>/dev/null
 	}
 	test () {
