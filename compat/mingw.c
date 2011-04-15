@@ -425,6 +425,7 @@ int mingw_access(const char *filename, int mode)
 
 static int do_wlstat(int follow, const wchar_t *wfilename, struct stat *buf, wchar_t *wbuffer, int buffersize);
 static int do_readlink(const wchar_t *path, wchar_t *buf, size_t bufsiz);
+static wchar_t *do_resolve_symlink(wchar_t *pathname, size_t s);
 
 /*
  * When changing to a directory that contains symbolic links in the path,
@@ -433,69 +434,15 @@ static int do_readlink(const wchar_t *path, wchar_t *buf, size_t bufsiz);
  * Windows seems to leave the symbolic links intact.
  * This breaks functions like make_absolute_path() that requires the unix behaviour to work.
  *
- * It is important that on failure, we remain in the original directory we
- * started in.
  */
 static int do_chdir(wchar_t *dirname, int depth)
 {
-	wchar_t *cur = dirname, *next_elem;
-	int ret;
-	struct stat st;
-	wchar_t cwd[MAX_PATH];
-	if (!_wgetcwd(cwd, MAX_PATH))
-		die_errno ("Could not get current working directory");
-	while (cur && *cur) {
-		wchar_t *first_slash;
-
-		first_slash = wcschr(cur+1, '/');
-		if (first_slash) {
-			next_elem=first_slash+1;
-			*first_slash = '\0';
-			/* Skip doubled slashes */
-			while (*next_elem && *next_elem == '/')
-				++next_elem;
-		} else
-			next_elem = 0;
-
-		ret = do_wlstat(0, cur, &st, NULL, 0);
-		if (ret != 0) {
-			/* Failed - restore working directory
-			 */
-			_wchdir(cwd);
-			return ret;
-		}
-
-		if (S_ISLNK(st.st_mode)) {
-			wchar_t link[MAX_PATH+1];
-			ssize_t len = do_readlink(cur, link, MAX_PATH);
-			if (len < 0)
-				die_errno ("Invalid symlink in path '%ls'", dirname);
-			if (MAX_PATH <= len)
-				die("symbolic link too long in path: %ls", dirname);
-			if (depth > 5)
-				die("symbolic links nested too deep in path: %ls", dirname);
-			ret = do_chdir(link, depth+1);
-		} else {
-			int len = wcslen(cur);
-			if (len >0 && cur[len-1]==':') {
-				wchar_t drivepath[len+2];
-				wcscpy(drivepath, cur);
-				drivepath[len]='/';
-				drivepath[len+1]='\0';
-				ret = _wchdir(drivepath);
-			} else
-				ret = _wchdir(cur);
-		}
-		if (ret!= 0) {
-			/* Failed - restore working directory
-			 */
-			_wchdir(cwd);
-			return ret;
-		}
-		cur = next_elem;
-	}
-	return 0;
+	wchar_t resolved[MAX_PATH];
+	wcscpy(resolved, dirname);
+	do_resolve_symlink(resolved, MAX_PATH);
+	return _wchdir(resolved);
 }
+
 int mingw_chdir(const char *dirname)
 {
 	wchar_t buf[MAX_PATH+1];
@@ -569,6 +516,96 @@ static int do_readlink(const wchar_t *path, wchar_t *buf, size_t bufsiz)
 	return -1;
 }
 
+#define has_dos_drive_prefixw(path) (iswalpha(*(path)) && (path)[1] == ':')
+static inline int is_absolute_pathw(const wchar_t *path)
+{
+	return path[0] == '/' || has_dos_drive_prefixw(path);
+}
+
+/*
+ * This resolves symlinks with support for symlinks in the path along the way.
+ *
+ * It is based on resolve_symlink in lockfile.c with support for widechars.
+ *
+ * To do this, it uses a left-to-right approach, checking each part of the path
+ * for a symlink and then replacing that section (depending on whether it is
+ * absolute or relative) with the link.
+ *
+ * This implementation is required to pass tests for make_absolute_path.
+ */
+const int MAXDEPTH = 10;
+static wchar_t *do_resolve_symlink(wchar_t *pathname, size_t s)
+{
+	/* Limit the number of links we resolve to prevent recursion */
+	int depth = MAXDEPTH;
+
+	wchar_t *start=pathname;
+	wchar_t *from=pathname;
+	wchar_t link[MAX_PATH+1];
+
+	while(*from && depth > 0 ) {
+		wchar_t endch;
+		int link_len;
+		/* Find the next section. */
+		from = wcschr(start+1, '/');
+		if (!from)
+			from = start+wcslen(start);
+		else {
+			/* Skip drive letters */
+			if (from > start && from[-1] == ':')
+				from = wcschr(start+1, '/');
+		}
+
+		/* Temporarily replace pathsep with \0 */
+		endch = *from;
+		*from = L'\0';
+		/* and read the link up to that point */
+		link_len = do_readlink(pathname, link, MAX_PATH);
+		*from = endch;
+
+		if (link_len >=0) {
+			/* It's a link - make sure it will fit */
+			if ((link_len + (from-pathname)) > MAX_PATH) {
+				char path[MAX_PATH];
+				wcstoutf(path, pathname, MAX_PATH);
+				warning("%s: symlink too long", path);
+				return pathname;
+			}
+			/* readlink() never null-terminates */
+			link[link_len] = L'\0';
+
+			if (is_absolute_pathw(link)) {
+				/* Concat rest onto link */
+				wcscat(link, from);
+				/* Absolute path replace all*/
+				wcscpy(pathname, link);
+				start = pathname;
+			} else {
+				if ((wcslen(link)+(start-pathname) > MAX_PATH)) {
+					char path[MAX_PATH];
+					wcstoutf(path, pathname, MAX_PATH);
+					warning("%s: symlink too long", path);
+					return pathname;
+				}
+				/* Concat rest onto link */
+				wcscat(link, from);
+				/* replace bit from  start
+				 * with link and rest of filename.
+				 */
+				wcscpy(start, link);
+			}
+			--depth;
+		} else {
+			/* Move to next section.
+			 */
+			start = from+1;
+			while (*start == '/')
+				++start;
+		}
+	}
+	return pathname;
+}
+
 static int do_wlstat(int follow, const wchar_t *wfilename, struct stat *buf, wchar_t *wbuffer, int buffersize)
 {
 	WIN32_FILE_ATTRIBUTE_DATA fdata;
@@ -602,7 +639,8 @@ static int do_wlstat(int follow, const wchar_t *wfilename, struct stat *buf, wch
 						return 0;
 					} else {
 						buf->st_mode = S_IFLNK;
-						if (do_readlink(wfilename, wbuffer, buffersize) <= 0) {
+						wcscpy(wbuffer, wfilename);
+						if (do_resolve_symlink(wbuffer, buffersize) <= 0) {
 							FindClose(handle);
 							break;
 						}
