@@ -437,7 +437,7 @@ test_done () {
 
 		test -d "$remove_trash" &&
 		cd "$(dirname "$remove_trash")" &&
-		rm -rf "$(basename "$remove_trash")"
+		cleandir "$(basename "$remove_trash")"
 
 		test_at_end_hook_
 
@@ -594,7 +594,27 @@ case "$test" in
  *) TRASH_DIRECTORY="$TEST_OUTPUT_DIRECTORY/$test" ;;
 esac
 test ! -z "$debug" || remove_trash=$TRASH_DIRECTORY
-rm -fr "$test" || {
+
+cleandir () {
+	rm -rf "$1"
+}
+case $(uname -s) in
+*MINGW*)
+	winpath () {
+		echo $(echo "$1"|sed 's+^/\([a-z]\)/+\1:/+' |sed 's+/+\\+g')
+	}
+	cleandir () {
+		if test -d "$1" ; then
+			echo >&5 "Cleaning $1"
+			cmd /c "del /s/q/f \"$(winpath "${1}")\" 2>nul" >/dev/null
+			cmd /c "rmdir /q/s \"$(winpath "${1}")\" 2>nul" >/dev/null
+		fi
+	}
+	;;
+esac
+
+
+cleandir "$test" || {
 	GIT_EXIT_OK=t
 	echo >&5 "FATAL: Cannot prepare test area"
 	exit 1

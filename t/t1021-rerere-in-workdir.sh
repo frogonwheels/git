@@ -23,7 +23,7 @@ test_expect_success SYMLINKS setup '
 '
 
 test_expect_success SYMLINKS 'rerere in workdir' '
-	rm -rf .git/rr-cache &&
+	cleandir .git/rr-cache &&
 	"$SHELL_PATH" "$TEST_DIRECTORY/../contrib/workdir/git-new-workdir" . work &&
 	(
 		cd work &&
@@ -39,7 +39,7 @@ test_expect_success SYMLINKS 'rerere in workdir' '
 # have to support relative symlinks, but it might be nicer to make this work
 # with a relative symbolic link someday.
 test_expect_failure SYMLINKS 'rerere in workdir (relative)' '
-	rm -rf .git/rr-cache &&
+	cleandir .git/rr-cache &&
 	"$SHELL_PATH" "$TEST_DIRECTORY/../contrib/workdir/git-new-workdir" . krow &&
 	(
 		cd krow &&

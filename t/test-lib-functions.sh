@@ -253,7 +253,7 @@ mkdir -p "$TRASH_DIRECTORY/prereq-test-dir" &&
 	say >&3 "$script"
 	test_eval_ "$script"
 	eval_ret=$?
-	rm -rf "$TRASH_DIRECTORY/prereq-test-dir"
+	cleandir "$TRASH_DIRECTORY/prereq-test-dir"
 	if test "$eval_ret" = 0; then
 		say >&3 "prerequisite $1 ok"
 	else
