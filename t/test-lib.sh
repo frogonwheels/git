@@ -1004,7 +1004,27 @@ case "$test" in
  *) TRASH_DIRECTORY="$TEST_DIRECTORY/$test" ;;
 esac
 test ! -z "$debug" || remove_trash=$TRASH_DIRECTORY
-rm -fr "$test" || {
+
+cleandir () {
+	rm -rf "$1"
+}
+case $(uname -s) in
+*MINGW*)
+	winpath () {
+		echo $(echo "$1"|sed 's+^/\([a-z]\)/+\1:/+' |sed 's+/+\\+g')
+	}
+	cleandir () {
+		if test -d "$1" ; then
+			echo >&5 "Cleaning $1"
+			cmd /c "del /s/q/f \"$(winpath "${1}")\" 2>nul" >/dev/null
+			cmd /c "rmdir /q/s \"$(winpath "${1}")\" 2>nul" >/dev/null
+		fi
+	}
+	;;
+esac
+
+
+cleandir "$test" || {
 	GIT_EXIT_OK=t
 	echo >&5 "FATAL: Cannot prepare test area"
 	exit 1
@@ -1026,7 +1046,7 @@ do
 	$skp)
 		say_color skip >&3 "skipping test $this_test altogether"
 		skip_all="skip all tests in $this_test"
-		test_done
+		test_done;;
 	esac
 done
 
@@ -1045,10 +1065,6 @@ yes () {
 	done
 }
 
-cleandir () {
-	rm -rf "$1"
-}
-
 # Fix some commands on Windows
 case $(uname -s) in
 *MINGW*)
@@ -1065,6 +1081,32 @@ case $(uname -s) in
 	# git sees Windows-style pwd
 	pwd () {
 		builtin pwd -W
+	}
+	# use mklink
+	ln () {
+
+		sym_hard=/H
+		sym_dir=
+		if test "$1" = "-s"
+		then
+			sym_hard=
+			shift
+		fi
+		builtin test -d "$1" && sym_dir=/D
+		cmd /c "mklink ${sym_hard}${sym_dir} \"$(winpath "$2")\" \"$(winpath "$1")\">/dev/null " 2>/dev/null
+	}
+	test () {
+		case "$1" in
+			-[hL])
+				file=$(cmd /c "@dir /b/a:l \"$(winpath "${2}")\" 2> nul" )
+				builtin test -n "${file}"
+			;;
+		-f)
+			file=$(cmd /c "@dir /b/a:-d-l-s \"$(winpath "${2}")\" 2> nul" )
+			builtin test -n "${file}"
+			;;
+		*) builtin test "$@";;
+		esac
 	}
 	# no POSIX permissions
 	# backslashes in pathspec are converted to '/'
@@ -1125,8 +1167,10 @@ test_i18ngrep () {
 }
 
 # test whether the filesystem supports symbolic links
-ln -s x y 2>/dev/null && test -h y 2>/dev/null && test_set_prereq SYMLINKS
+touch x
+ln -s x y && test -h y 2>/dev/null && test_set_prereq SYMLINKS
 rm -f y
+rm -f x
 
 # When the tests are run as root, permission tests will report that
 # things are writable when they shouldn't be.

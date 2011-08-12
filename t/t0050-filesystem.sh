@@ -34,10 +34,12 @@ test_expect_success 'see what we expect' '
 	esac &&
 	rm -fr junk &&
 	{
+		touch x &&
 		ln -s x y 2> /dev/null &&
 		test -h y 2> /dev/null ||
 		no_symlinks=1 &&
-		rm -f y
+		rm -f y &&
+		rm -f x
 	}
 '
 
@@ -70,7 +72,7 @@ test_expect_success "detection of filesystem w/o symlink support during repo ini
 	test "$v" = false
 '
 else
-test_expect_success "detection of filesystem w/o symlink support during repo init" '
+test_expect_failure "detection of filesystem with  symlink support during repo init" '
 
 	test_must_fail git config --bool core.symlinks ||
 	test "$(git config --bool core.symlinks)" = true
