@@ -849,7 +849,7 @@ test_done () {
 
 		test -d "$remove_trash" &&
 		cd "$(dirname "$remove_trash")" &&
-		rm -rf "$(basename "$remove_trash")"
+		cleandir "$(basename "$remove_trash")"
 
 		exit 0 ;;
 
@@ -1043,6 +1043,10 @@ yes () {
 	do
 		:
 	done
+}
+
+cleandir () {
+	rm -rf "$1"
 }
 
 # Fix some commands on Windows
