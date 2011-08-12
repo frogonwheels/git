@@ -39,7 +39,8 @@ test_expect_success SYMLINKS 'switch from symlink to dir' '
 '
 
 test_expect_success SYMLINKS 'Remove temporary directories & switch to master' '
-	rm -fr frotz xyzzy nitfol &&
+	cleandir frotz &&
+	rm -fr xyzzy nitfol &&
 	git checkout -f master
 '
 
