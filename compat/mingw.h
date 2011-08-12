@@ -317,6 +317,8 @@ void mingw_open_html(const char *path);
 void mingw_mark_as_git_dir(const char *dir);
 #define mark_as_git_dir mingw_mark_as_git_dir
 
+char *mingw_resolve_symlink(char *p, size_t s);
+#define resolve_symlink mingw_resolve_symlink
 
 /**
  * Converts UTF-8 encoded string to UTF-16LE.

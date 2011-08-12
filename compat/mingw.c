@@ -425,7 +425,7 @@ int mingw_access(const char *filename, int mode)
 
 static int do_wlstat(int follow, const wchar_t *wfilename, struct stat *buf, wchar_t *wbuffer, int buffersize);
 static int do_readlink(const wchar_t *path, wchar_t *buf, size_t bufsiz);
-static wchar_t *do_resolve_symlink(wchar_t *pathname, size_t s);
+static wchar_t *do_resolve_symlink(wchar_t *pathname, size_t bufsize);
 
 /*
  * When changing to a directory that contains symbolic links in the path,
@@ -522,6 +522,15 @@ static inline int is_absolute_pathw(const wchar_t *path)
 	return path[0] == '/' || has_dos_drive_prefixw(path);
 }
 
+char *mingw_resolve_symlink(char *pathname, size_t bufsize) {
+	wchar_t wpathname[MAX_PATH+1];
+	if (utftowcs(wpathname, pathname, MAX_PATH) >= 0) {
+		do_resolve_symlink(wpathname, MAX_PATH);
+		wcstoutf(pathname, wpathname, bufsize);
+	}
+	return pathname;
+}
+
 /*
  * This resolves symlinks with support for symlinks in the path along the way.
  *
@@ -534,13 +543,14 @@ static inline int is_absolute_pathw(const wchar_t *path)
  * This implementation is required to pass tests for make_absolute_path.
  */
 const int MAXDEPTH = 10;
-static wchar_t *do_resolve_symlink(wchar_t *pathname, size_t s)
+static wchar_t *do_resolve_symlink(wchar_t *pathname, size_t bufsize)
 {
 	/* Limit the number of links we resolve to prevent recursion */
 	int depth = MAXDEPTH;
 
 	wchar_t *start=pathname;
 	wchar_t *from=pathname;
+	wchar_t *last;
 	wchar_t link[MAX_PATH+1];
 
 	while(*from && depth > 0 ) {
@@ -554,6 +564,17 @@ static wchar_t *do_resolve_symlink(wchar_t *pathname, size_t s)
 			/* Skip drive letters */
 			if (from > start && from[-1] == ':')
 				from = wcschr(start+1, '/');
+		}
+		if (start > pathname && from-start == 3 && start[1]=='.' && start[2] == '.' ) {
+			/* Handle /../ */
+			if (start[-1] != ':') {
+				for (last = start-1; last > pathname; --last)
+					if (*last == '/')
+						break;
+				if (last > pathname) {
+					memmove(last, from, (pathname-from)+bufsize );
+				}
+			}
 		}
 
 		/* Temporarily replace pathsep with \0 */
@@ -577,11 +598,17 @@ static wchar_t *do_resolve_symlink(wchar_t *pathname, size_t s)
 			if (is_absolute_pathw(link)) {
 				/* Concat rest onto link */
 				wcscat(link, from);
+				if (wcslen(link) > bufsize) {
+					char path[MAX_PATH];
+					wcstoutf(path, pathname, MAX_PATH);
+					warning("%s: symlink too long", path);
+					return pathname;
+				}
 				/* Absolute path replace all*/
 				wcscpy(pathname, link);
 				start = pathname;
 			} else {
-				if ((wcslen(link)+(start-pathname) > MAX_PATH)) {
+				if ((wcslen(link)+(start-pathname) > bufsize)) {
 					char path[MAX_PATH];
 					wcstoutf(path, pathname, MAX_PATH);
 					warning("%s: symlink too long", path);
