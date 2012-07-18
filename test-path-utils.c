@@ -54,6 +54,15 @@ int main(int argc, char **argv)
 		return 0;
 	}
 
+	if (argc >= 2 && !strcmp(argv[1], "is_directory")) {
+		while (argc > 2) {
+			puts(is_directory(argv[2])?"Yes":"No");
+			argc--;
+			argv++;
+		}
+		return 0;
+	}
+
 	fprintf(stderr, "%s: unknown function name: %s\n", argv[0],
 		argv[1] ? argv[1] : "(there was none)");
 	return 1;
