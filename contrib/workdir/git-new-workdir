@@ -1,5 +1,42 @@
 #!/bin/sh
 
+# Fix some commands on Windows
+case $(uname -s) in
+*MINGW*)
+	winpath () {
+		echo $(echo "$1"|sed 's+^/\([a-z]\)/+\1:/+' |sed 's+/+\\+g')
+	}
+	# git sees Windows-style pwd
+	pwd () {
+		builtin pwd -W
+	}
+	# use mklink
+	ln () {
+
+		sym_hard=/H
+		sym_dir=
+		if test "$1" = "-s"
+		then
+			sym_hard=
+			shift
+		fi
+		pushd $(dirname "$2") 2>&1 > /dev/null
+		builtin test -d "$1" && sym_dir=/D
+		popd > /dev/null 2> /dev/null
+		cmd /c "mklink ${sym_hard}${sym_dir} \"$(winpath "$2")\" \"$(winpath "$1")\">/dev/null " 2>/dev/null
+	}
+
+	test () {
+		case "$1" in
+			-h)
+				file=$(cmd /c "@dir /b/a:l \"$(winpath "${2}")\" 2> nul" )
+				builtin test -n "${file}"
+			;;
+		*) builtin test "$@";;
+		esac
+	}
+esac
+
 usage () {
 	echo "usage:" $@
 	exit 127
@@ -70,6 +107,7 @@ do
 		mkdir -p "$(dirname "$new_workdir/.git/$x")"
 		;;
 	esac
+	test -e "$git_dir/$x" || mkdir "$git_dir/$x"
 	ln -s "$git_dir/$x" "$new_workdir/.git/$x"
 done
 
