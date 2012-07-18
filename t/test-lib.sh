@@ -641,7 +641,7 @@ do
 	$skp)
 		say_color skip >&3 "skipping test $this_test altogether"
 		skip_all="skip all tests in $this_test"
-		test_done
+		test_done;;
 	esac
 done
 
@@ -676,6 +676,34 @@ case $(uname -s) in
 	# git sees Windows-style pwd
 	pwd () {
 		builtin pwd -W
+	}
+	# use mklink
+	ln () {
+
+		sym_hard=/H
+		sym_dir=
+		if test "$1" = "-s"
+		then
+			sym_hard=
+			shift
+		fi
+		pushd $(dirname "$2") 2>&1 > /dev/null
+		builtin test -d "$1" && sym_dir=/D
+		popd > /dev/null 2> /dev/null
+		cmd /c "mklink ${sym_hard}${sym_dir} \"$(winpath "$2")\" \"$(winpath "$1")\">/dev/null " 2>/dev/null
+	}
+	test () {
+		case "$1" in
+			-[hL])
+				file=$(cmd /c "@dir /b/a:l \"$(winpath "${2}")\" 2> nul" )
+				builtin test -n "${file}"
+			;;
+		-f)
+			file=$(cmd /c "@dir /b/a:-d-l-s \"$(winpath "${2}")\" 2> nul" )
+			builtin test -n "${file}"
+			;;
+		*) builtin test "$@";;
+		esac
 	}
 	# no POSIX permissions
 	# backslashes in pathspec are converted to '/'
@@ -753,6 +781,7 @@ test_i18ngrep () {
 
 test_lazy_prereq SYMLINKS '
 	# test whether the filesystem supports symbolic links
+	touch x
 	ln -s x y && test -h y
 '
 
