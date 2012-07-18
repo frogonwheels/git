@@ -522,6 +522,13 @@ static int do_readlink(const wchar_t *path, wchar_t *buf, size_t bufsiz)
 				int offset = b->SymbolicLinkReparseBuffer.SubstituteNameOffset / sizeof(wchar_t);
 				int i;
 				len = (bufsiz < len) ? bufsiz : len;
+				/* Get rid of the \??\ prefix that gets put into absolute reparse points, something
+				 * to do with the NT drive namespace.
+				 */
+				if (len >4 && wcsncmp(b->SymbolicLinkReparseBuffer.PathBuffer+offset,L"\\??\\",4) == 0) {
+					offset += 4;
+					len -= 4;
+				}
 				wcsncpy(buf, & b->SymbolicLinkReparseBuffer.PathBuffer[offset], len);
 				for (i = 0; i < len; i++)
 					if (buf[i] == '\\')
