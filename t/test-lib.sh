@@ -699,8 +699,17 @@ case $(uname -s) in
 	test () {
 		case "$1" in
 			-[hL])
-				file=$(cmd /c "@dir /b/a:l \"$(winpath "${2}")\" 2> nul" )
-				builtin test -n "${file}"
+				if builtin test -d "${2}" ; then
+					sym_dir=$(dirname "${2}")
+					builtin test -n "${sym_dir}" && pushd "${sym_dir}"  2>&1 > /dev/null
+					sym_base=$(basename "${2}")
+					file=$(cmd /c "@dir /b/a:l \"${sym_base}?\" 2> nul" | grep "^${sym_base}$" )
+					builtin test -n "${sym_dir}" && popd 2>&1> /dev/null
+					builtin test -n "${file}"
+				else
+					file=$(cmd /c "@dir /b/a:l \"$(winpath "${2}")\" 2> nul" )
+					builtin test -n "${file}"
+				fi
 			;;
 		-f)
 			file=$(cmd /c "@dir /b/a:-d-l-s \"$(winpath "${2}")\" 2> nul" )
