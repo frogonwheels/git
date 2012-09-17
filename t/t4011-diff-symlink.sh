@@ -27,6 +27,7 @@ test_expect_success SYMLINKS 'diff new symlink and file' '
 	@@ -0,0 +1 @@
 	+xyzzy
 	EOF
+	touch xyzzy &&
 	ln -s xyzzy frotz &&
 	echo xyzzy >nitfol &&
 	git update-index &&
