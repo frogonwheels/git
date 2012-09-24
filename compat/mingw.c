@@ -687,10 +687,22 @@ static wchar_t *do_resolve_symlink(wchar_t *pathname, size_t bufsize)
 				}
 				/* Concat rest onto link */
 				wcscat(link, from);
-				/* replace bit from  start
-				 * with link and rest of filename.
-				 */
-				wcscpy(start, link);
+
+				if (start[0] == L'.' && start[1] == L'\0') {
+					/* Special case of '.' and a relative symlink,
+					   since this has to be actually relative to
+					   one directory up.
+					*/
+					wcscpy(start, L"../");
+					/* Concat with link and rest of filename.
+					 */
+					wcscpy(start+3, link);
+				} else {
+					/* replace bit from  start
+					 * with link and rest of filename.
+					 */
+					wcscpy(start, link);
+				}
 			}
 			--depth;
 		} else {
