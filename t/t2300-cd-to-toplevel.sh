@@ -9,8 +9,8 @@ test_cd_to_toplevel () {
 		(
 			cd '"'$1'"' &&
 			. "$(git --exec-path)"/git-sh-setup &&
-			cd_to_toplevel &&
-			[ "$(pwd -P)" = "$TOPLEVEL" ]
+			cd_to_toplevel && echo :$(pwd -P): &&
+			path_compare "$(pwd -P)" "$TOPLEVEL"
 		)
 	'
 }

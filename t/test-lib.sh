@@ -664,6 +664,10 @@ abspath_of_dir () {
 	(cd "$1" ; pwd -P)
 }
 
+path_compare () {
+  builtin test "$1" = "$2"
+}
+
 # Fix some commands on Windows
 case $(uname -s) in
 *MINGW*)
