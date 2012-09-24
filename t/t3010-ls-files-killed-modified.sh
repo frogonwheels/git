@@ -65,6 +65,9 @@ else
 	date > path3
 	date > path5
 fi
+touch xyzzy
+rm path1
+rm xyzzy
 mkdir path0 path1 path6
 date >path0/file0
 date >path1/file1
