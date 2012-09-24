@@ -466,6 +466,8 @@ int mingw_access(const char *filename, int mode)
 static int do_wlstat(int follow, const wchar_t *wfilename, struct stat *buf, wchar_t *wbuffer, int buffersize);
 static int do_readlink(const wchar_t *path, wchar_t *buf, size_t bufsiz);
 static wchar_t *do_resolve_symlink(wchar_t *pathname, size_t bufsize);
+static inline int is_absolute_pathw(const wchar_t *path);
+static wchar_t *do_getcwd(wchar_t *wpointer, int len);
 
 /*
  * When changing to a directory that contains symbolic links in the path,
@@ -478,6 +480,23 @@ static wchar_t *do_resolve_symlink(wchar_t *pathname, size_t bufsize);
 static int do_wchdir(wchar_t *dirname)
 {
 	wchar_t resolved[MAX_PATH];
+	int ret;
+
+	if (! is_absolute_pathw(dirname)) {
+
+		/*
+		 * Change to real, symlink-resolved, CWD first.
+		 * This enforces unix behaviour when CWD is a symlink.
+		 */
+		if (!do_getcwd(resolved, MAX_PATH)) {
+			errno = ENOENT; // CWD is not a path.
+			return -1;
+		}
+
+		ret = _wchdir(resolved);
+		if (ret)
+			return ret;
+	}
 	wcscpy(resolved, dirname);
 	do_resolve_symlink(resolved, MAX_PATH);
 	return _wchdir(resolved);
