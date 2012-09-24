@@ -987,6 +987,9 @@ static wchar_t *do_getcwd(wchar_t *wpointer, int len)
 	for (i = 0; wpointer[i] && i < len; ++i)
 		if (wpointer[i] == L'\\')
 			wpointer[i] = L'/';
+	/* Unix getcwd resolves symlinks
+	 */
+	do_resolve_symlink(wpointer, len);
 	return wpointer;
 }
 
