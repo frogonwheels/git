@@ -727,6 +727,10 @@ case $(uname -s) in
 		(cd "$1" ; pwd -P | sed 's+^/\([a-z]\)\/+\1:/+')
 	}
 
+	path_compare () {
+	  builtin test "$(echo "$1"|tr [:upper:] [:lower:])" = "$(echo "$2"|tr [:upper:] [:lower:])"
+	}
+
 	# no POSIX permissions
 	# backslashes in pathspec are converted to '/'
 	# exec does not inherit the PID
