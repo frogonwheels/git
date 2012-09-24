@@ -978,17 +978,26 @@ struct tm *localtime_r(const time_t *timep, struct tm *result)
 	return result;
 }
 
-char *mingw_getcwd(char *pointer, int len)
+static wchar_t *do_getcwd(wchar_t *wpointer, int len)
 {
 	int i;
-	wchar_t wpointer[MAX_PATH];
-	if (!_wgetcwd(wpointer, ARRAY_SIZE(wpointer)))
+	if (!_wgetcwd(wpointer, len))
 		return NULL;
+
+	for (i = 0; wpointer[i] && i < len; ++i)
+		if (wpointer[i] == L'\\')
+			wpointer[i] = L'/';
+	return wpointer;
+}
+
+char *mingw_getcwd(char *pointer, int len)
+{
+	wchar_t wpointer[MAX_PATH];
+	if (!do_getcwd(wpointer, ARRAY_SIZE(wpointer)))
+		return NULL;
+
 	if (xwcstoutf(pointer, wpointer, len) < 0)
 		return NULL;
-	for (i = 0; pointer[i]; i++)
-		if (pointer[i] == '\\')
-			pointer[i] = '/';
 	return pointer;
 }
 
