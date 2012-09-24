@@ -1040,6 +1040,15 @@ static wchar_t *do_getcwd(wchar_t *wpointer, int len)
 	for (i = 0; wpointer[i] && i < len; ++i)
 		if (wpointer[i] == L'\\')
 			wpointer[i] = L'/';
+	/* Unix getcwd resolves symlinks
+	 */
+	do_resolve_symlink(wpointer, len);
+	i = wcslen(wpointer);
+	/* Unix getcwd doesn't appear ever to have a trailing /
+	 * which do_resolve_symlink can append.
+	 */
+	if (wpointer[i-1] == L'/')
+		wpointer[i-1] = L'\0';
 	return wpointer;
 }
 
