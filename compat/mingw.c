@@ -630,8 +630,11 @@ static wchar_t *do_resolve_symlink(wchar_t *pathname, size_t bufsize)
 			from = start+wcslen(start);
 		else {
 			/* Skip drive letters */
-			if (from > start && from[-1] == ':')
-				from = wcschr(start+1, '/');
+			if (from > start && from[-1] == ':') {
+				from = wcschr(from+1, '/');
+				if (!from)
+					from = start+wcslen(start);
+			}
 		}
 		if (start > pathname && from-start == 3 && start[1]=='.' && start[2] == '.' ) {
 			/* Handle /../ */
