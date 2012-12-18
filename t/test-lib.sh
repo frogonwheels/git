@@ -727,6 +727,14 @@ case $(uname -s) in
 		esac
 	}
 
+	rm_symlink () {
+		if builtin test -d "${1}" ; then
+			cmd /c "@rmdir \"$(winpath "$1")\""
+		else
+			cmd /c "@del \"$(winpath "$1")\""
+		fi
+	}
+
 	abspath_of_dir () {
 		(cd "$1" ; pwd -P | sed 's+^/\([a-z]\)\/+\1:/+')
 	}
