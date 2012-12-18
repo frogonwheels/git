@@ -20,7 +20,7 @@ test_expect_success SYMLINKS setup '
 	git commit -m initial &&
 	git branch test &&
 
-	rm arch/x86_64/boot &&
+	rm_symlink arch/x86_64/boot &&
 	mkdir arch/x86_64/boot &&
 	lecho 2 3 4 5 6 >arch/x86_64/boot/Makefile &&
 	git add . &&
