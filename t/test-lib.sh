@@ -610,6 +610,10 @@ path_compare () {
   builtin test "$1" = "$2"
 }
 
+rm_symlink () {
+  rm "$*"
+}
+
 # Fix some commands on Windows
 case $(uname -s) in
 *MINGW*)

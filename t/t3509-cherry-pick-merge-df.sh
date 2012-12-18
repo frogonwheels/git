@@ -17,7 +17,7 @@ test_expect_success SYMLINKS 'Setup rename across paths each below D/F conflicts
 	git commit -m b &&
 
 	git checkout -b branch &&
-	rm b/a &&
+	rm_symlink b/a &&
 	mv a b/a &&
 	ln -s b/a a &&
 	git add . &&
