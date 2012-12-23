@@ -747,6 +747,11 @@ case $(uname -s) in
 	  builtin test "$(echo "$1"|tr [:upper:] [:lower:])" = "$(echo "$2"|tr [:upper:] [:lower:])"
 	}
 
+	check_symlink() {
+		LINK="$(cmd /c "dir $1" | grep \<SYMLINK\> | sed 's/^.*\[\([^]]*\)\].*$/\1/')"
+		test "$LINK" == "$2"
+	}
+
 	# no POSIX permissions
 	# backslashes in pathspec are converted to '/'
 	# exec does not inherit the PID
