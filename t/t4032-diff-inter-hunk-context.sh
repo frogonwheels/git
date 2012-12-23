@@ -21,24 +21,24 @@ t() {
 	5) hunks=$5; cmd="diff -U$3 --inter-hunk-context=$4";;
 	esac
 	label="$cmd, $1 common $2"
-	file=f$1
-	expected=expected.$file.$3.$hunks
+	file_name=f$1
+	expected=expected.$file_name.$3.$hunks
 
-	if ! test -f $file
+	if ! test -f "$file_name"
 	then
-		f A $1 B >$file
-		git add $file
-		git commit -q -m. $file
-		f X $1 Y >$file
+		f A $1 B >"$file_name"
+		git add $file_name
+		git commit -q -m. $file_name
+		f X $1 Y >"$file_name"
 	fi
 
 	test_expect_success "$label: count hunks ($hunks)" "
-		test $(git $cmd $file | grep '^@@ ' | wc -l) = $hunks
+		test $(git $cmd $file_name | grep '^@@ ' | wc -l) = $hunks
 	"
 
 	test -f $expected &&
 	test_expect_success "$label: check output" "
-		git $cmd $file | grep -v '^index ' >actual &&
+		git $cmd $file_name | grep -v '^index ' >actual &&
 		test_cmp $expected actual
 	"
 }
