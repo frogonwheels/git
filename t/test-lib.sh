@@ -672,6 +672,10 @@ rm_symlink () {
   rm "$*"
 }
 
+check_symlink() {
+	case "$(ls -l $1)" in *" $1 -> $2") :;; *) false;; esac
+}
+
 # Fix some commands on Windows
 case $(uname -s) in
 *MINGW*)

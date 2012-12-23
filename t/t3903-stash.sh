@@ -308,7 +308,7 @@ test_expect_success SYMLINKS 'stash file to symlink' '
 	test -f file &&
 	test bar = "$(cat file)" &&
 	git stash apply &&
-	case "$(ls -l file)" in *" file -> file2") :;; *) false;; esac
+	check_symlink file file2
 '
 
 test_expect_success SYMLINKS 'stash file to symlink (stage rm)' '
@@ -319,7 +319,7 @@ test_expect_success SYMLINKS 'stash file to symlink (stage rm)' '
 	test -f file &&
 	test bar = "$(cat file)" &&
 	git stash apply &&
-	case "$(ls -l file)" in *" file -> file2") :;; *) false;; esac
+	check_symlink file file2
 '
 
 test_expect_success SYMLINKS 'stash file to symlink (full stage)' '
@@ -331,7 +331,7 @@ test_expect_success SYMLINKS 'stash file to symlink (full stage)' '
 	test -f file &&
 	test bar = "$(cat file)" &&
 	git stash apply &&
-	case "$(ls -l file)" in *" file -> file2") :;; *) false;; esac
+	check_symlink file file2
 '
 
 # This test creates a commit with a symlink used for the following tests
@@ -345,7 +345,7 @@ test_expect_success SYMLINKS 'stash symlink to file' '
 	cp file filelink &&
 	git stash save "symlink to file" &&
 	test -h filelink &&
-	case "$(ls -l filelink)" in *" filelink -> file") :;; *) false;; esac &&
+	check_symlink filelink file &&
 	git stash apply &&
 	! test -h filelink &&
 	test bar = "$(cat file)"
@@ -357,7 +357,7 @@ test_expect_success SYMLINKS 'stash symlink to file (stage rm)' '
 	cp file filelink &&
 	git stash save "symlink to file (stage rm)" &&
 	test -h filelink &&
-	case "$(ls -l filelink)" in *" filelink -> file") :;; *) false;; esac &&
+	check_symlink filelink file &&
 	git stash apply &&
 	! test -h filelink &&
 	test bar = "$(cat file)"
@@ -370,7 +370,7 @@ test_expect_success SYMLINKS 'stash symlink to file (full stage)' '
 	git add filelink &&
 	git stash save "symlink to file (full stage)" &&
 	test -h filelink &&
-	case "$(ls -l filelink)" in *" filelink -> file") :;; *) false;; esac &&
+	check_symlink filelink file &&
 	git stash apply &&
 	! test -h filelink &&
 	test bar = "$(cat file)"
