@@ -2166,11 +2166,15 @@ void mingw_open_html(const char *unixpath)
 	}
 }
 
+#define SYMBOLIC_LINK_FLAG_DIRECTORY 0x1
+
 int link(const char *oldpath, const char *newpath)
 {
 	typedef BOOL (WINAPI *T)(LPCWSTR, LPCWSTR, LPSECURITY_ATTRIBUTES);
 	static T create_hard_link = NULL;
-	wchar_t woldpath[MAX_PATH], wnewpath[MAX_PATH];
+	wchar_t woldpath[MAX_PATH], wnewpath[MAX_PATH], wbuf[MAX_PATH];
+	struct stat  st;
+
 	if (xutftowcs_path(woldpath, oldpath) < 0 ||
 		xutftowcs_path(wnewpath, newpath) < 0)
 		return -1;
@@ -2199,17 +2203,68 @@ int link(const char *oldpath, const char *newpath)
 	return 0;
 }
 
-int symlink(const char *oldpath, const char *newpath)
+int mingw_symlink(const char *oldpath, const char *newpath, int targettype)
 {
 	typedef BOOL WINAPI (*symlink_fn)(const wchar_t*, const wchar_t*, DWORD);
 	static symlink_fn create_symbolic_link = NULL;
 	char buf[PATH_MAX + 1];
-	wchar_t woldpath[MAX_PATH], wnewpath[MAX_PATH];
+	wchar_t woldpath[MAX_PATH], wnewpath[MAX_PATH], wbuf[MAX_PATH], wcurdir[MAX_PATH];
+	wchar_t *pos, *wlast=NULL, oldc;
+	struct stat  st;
+	int ret, popchdir;
+	int flags = 0;
 
 	if (xutftowcs(woldpath, make_backslash_path(oldpath, buf), MAX_PATH) < 0)
 		return -1;
+
 	if (xutftowcs(wnewpath, newpath, MAX_PATH) < 0)
 		return -1;
+
+	switch (targettype) {
+		case LINK_UNKNOWN:
+			{
+				for (pos = wnewpath; *pos; ++pos)
+					if (is_dir_sep(*pos))
+						wlast = pos;
+
+				popchdir = 0;
+				if (wlast != NULL) {
+					do_getcwd(wcurdir, MAX_PATH);
+					oldc = *wlast;
+					*wlast = L'\0';
+
+					ret = do_wchdir(wnewpath);
+					if (ret == 0)
+						popchdir = 1;
+
+					*wlast = oldc;
+					if (ret != 0)
+						return -1;
+				}
+
+
+				if (!do_wlstat(1, woldpath, &st, wbuf, MAX_PATH)) {
+					if (S_ISDIR(st.st_mode) )
+						flags = SYMBOLIC_LINK_FLAG_DIRECTORY;
+
+				}
+
+				if (popchdir)
+					do_wchdir(wcurdir);
+
+			}
+			break;
+		case LINK_ISDIR:
+			flags = SYMBOLIC_LINK_FLAG_DIRECTORY;
+			break;
+	}
+
+	if (!do_wlstat(0, wnewpath, &st, wbuf, MAX_PATH)) {
+		/* Delete the file if it exists.
+		 */
+		if (mingw_wunlink(wnewpath))
+			return -1;
+	}
 
 	if (!create_symbolic_link) {
 		create_symbolic_link = (symlink_fn) GetProcAddress(
@@ -2222,7 +2277,7 @@ int symlink(const char *oldpath, const char *newpath)
 		return -1;
 	}
 
-	if (!create_symbolic_link(wnewpath, woldpath, 0)) {
+	if (!create_symbolic_link(wnewpath, woldpath, flags)) {
 		errno = err_win_to_posix(GetLastError());
 		return -1;
 	}
