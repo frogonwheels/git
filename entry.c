@@ -134,6 +134,65 @@ static int streaming_write_entry(struct cache_entry *ce, char *path,
 	return result;
 }
 
+static int get_symlink_dir_state( const char *filepath, const char *symlinkpath )
+{
+	/* For certain O/S and file-systems, symlinks need to know before-hand whether it
+	 * is a directory or a file being pointed to.
+	 *
+	 * This allows us to use index information for relative paths that lie
+	 * within the working directory.
+	 *
+	 * This function is not interested in interrogating the file-system.
+	 */
+	char *sanitized;
+	const char *fpos, *last;
+	int len, ret, pos;
+
+	/* This is an absolute path, so git doesn't know.
+	 */
+	if (is_absolute_path(symlinkpath))
+		return LINK_UNKNOWN;
+
+	/* Work on a sanitized version of the path that can be
+	 * matched against the index.
+	 */
+	last = NULL;
+	for (fpos = filepath; *fpos; ++fpos)
+		if (is_dir_sep(*fpos))
+			last = fpos;
+
+	if (last) {
+		len = (1+last-filepath);
+		sanitized = xmalloc(len + strlen(symlinkpath)+1);
+		memcpy(sanitized, filepath, 1+last-filepath);
+	} else {
+		len = 0;
+		sanitized = xmalloc(strlen(symlinkpath)+1);
+	}
+	strcpy(sanitized+len, symlinkpath);
+
+	ret = LINK_UNKNOWN;
+	if (!normalize_path_copy(sanitized, sanitized)) {
+
+		for (pos = 0; ret == LINK_UNKNOWN && pos < active_nr; pos++) {
+			struct cache_entry *ce = active_cache[pos];
+			switch (match_one(sanitized, ce->name, ce_namelen(ce))) {
+				case MATCHED_EXACTLY:
+				case MATCHED_FNMATCH:
+					ret = LINK_ISFILE;
+					break;
+				case MATCHED_RECURSIVELY:
+					ret = LINK_ISDIR;
+					break;
+			}
+		}
+	}
+
+	free(sanitized);
+	return ret;
+}
+
+
 static int write_entry(struct cache_entry *ce, char *path, const struct checkout *state, int to_tempfile)
 {
 	unsigned int ce_mode_s_ifmt = ce->ce_mode & S_IFMT;
@@ -162,7 +221,10 @@ static int write_entry(struct cache_entry *ce, char *path, const struct checkout
 				path, sha1_to_hex(ce->sha1));
 
 		if (ce_mode_s_ifmt == S_IFLNK && has_symlinks && !to_tempfile) {
-			ret = symlink(new, path);
+			/* Note that symlink_ex is a macro, and that for filesystems that
+			 * don't care, get_symlink_dir_state will not be called.
+			 */
+			ret = symlink_ex(new, path, get_symlink_dir_state(path, new));
 			free(new);
 			if (ret)
 				return error("unable to create symlink %s (%s)",

@@ -71,6 +71,7 @@ extern int match_pathspec(const char **pathspec, const char *name, int namelen, 
 extern int match_pathspec_depth(const struct pathspec *pathspec,
 				const char *name, int namelen,
 				int prefix, char *seen);
+extern int match_one(const char *match, const char *name, int namelen);
 extern int within_depth(const char *name, int namelen, int depth, int max_depth);
 
 extern int fill_directory(struct dir_struct *dir, const char **pathspec);
