@@ -198,7 +198,7 @@ test_expect_success 'clients cannot access unreachable commits' '
 	test_must_fail git archive --remote=. $sha1 >remote.tar
 '
 
-test_expect_success 'git-archive --prefix=olde-' '
+test_expect_failure 'git-archive --prefix=olde-' '
 	git archive --prefix=olde- >h.tar HEAD &&
 	(
 		mkdir h &&

@@ -36,7 +36,7 @@ check_zip() {
 		test_cmp a.lst $listfile
 	"
 
-	test_expect_success UNZIP " validate file contents" "
+	test_expect_failure UNZIP " validate file contents" "
 		diff -r a ${dir_with_prefix}a
 	"
 }
