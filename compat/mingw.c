@@ -201,15 +201,11 @@ static int ask_yes_no_if_possible(const char *format, ...)
 	}
 }
 
-int mingw_unlink(const char *pathname)
+int do_wunlink(const wchar_t *wpathname)
 {
 	int ret, tries;
 	WIN32_FIND_DATAW findbuf;
 	HANDLE handle;
-	wchar_t wpathname[MAX_PATH];
-
-	if (xutftowcs_path(wpathname, pathname) < 0)
-		return -1;
 
 	/* Check for directories and symlinks */
 	handle = FindFirstFileW(wpathname, &findbuf);
@@ -222,44 +218,82 @@ int mingw_unlink(const char *pathname)
 	/* read-only files cannot be removed */
 	_wchmod(wpathname, 0666);
 
+	tries = 0;
+
 	do {
-		tries = 0;
-
-		do {
-			if (findbuf.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
-				BOOL bres;
-				if (findbuf.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
-					bres = RemoveDirectoryW(wpathname);
-				else
-					bres = DeleteFileW(wpathname);
-				if (!bres)
-					ret = -1;
-				else
-					ret =  0;
-			}
-			else if (findbuf.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-				ret = _wrmdir(wpathname);
-			}
+		if (findbuf.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+			BOOL bres;
+			if (findbuf.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+				bres = RemoveDirectoryW(wpathname);
 			else
-				ret =  _wunlink(wpathname);
+				bres = DeleteFileW(wpathname);
+			if (!bres)
+				ret = -1;
+			else
+				ret =  0;
+		}
+		else if (findbuf.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+			ret = _wrmdir(wpathname);
+		}
+		else
+			ret =  _wunlink(wpathname);
 
-			if (ret == 0)
-				break;
+		if (ret == 0)
+			break;
 
-			if (!is_file_in_use_error(GetLastError()))
-				break;
-			/*
-			 * We assume that some other process had the source or
-			 * destination file open at the wrong moment and retry.
-			 * In order to give the other process a higher chance to
-			 * complete its operation, we give up our time slice now.
-			 * If we have to retry again, we do sleep a bit.
-			 */
-			if (tries >= ARRAY_SIZE(delay))
-				break;
-			Sleep(delay[tries]);
-			tries++;
-		} while (TRUE);
+		if (!is_file_in_use_error(GetLastError()))
+			break;
+		/*
+		 * We assume that some other process had the source or
+		 * destination file open at the wrong moment and retry.
+		 * In order to give the other process a higher chance to
+		 * complete its operation, we give up our time slice now.
+		 * If we have to retry again, we do sleep a bit.
+		 */
+		if (tries >= ARRAY_SIZE(delay))
+			break;
+		Sleep(delay[tries]);
+		tries++;
+	} while (TRUE);
+
+	return ret;
+}
+
+int mingw_wunlink(const wchar_t *wpathname)
+{
+	char pathname[PATH_MAX];
+	int ret;
+
+	do {
+
+		ret = do_wunlink(wpathname);
+
+		if (ret == 0)
+			break;
+
+		if (xwcstoutf(pathname, wpathname, PATH_MAX) < 0)
+			return -1;
+
+	} while (is_file_in_use_error(GetLastError()) &&
+	       ask_yes_no_if_possible("Unlink of file '%s' failed. "
+			"Should I try again?", pathname));
+
+	return ret;
+
+
+}
+
+int mingw_unlink(const char *pathname)
+{
+	wchar_t wpathname[MAX_PATH];
+	int ret;
+
+	do {
+
+		if (xutftowcs_path(wpathname, pathname) < 0)
+			return -1;
+
+		ret = do_wunlink(wpathname);
 
 	} while (ret != 0 && is_file_in_use_error(GetLastError()) &&
 	       ask_yes_no_if_possible("Unlink of file '%s' failed. "
@@ -267,6 +301,7 @@ int mingw_unlink(const char *pathname)
 
 	return ret;
 }
+
 
 static int is_dir_empty(const wchar_t *wpath)
 {
@@ -2139,6 +2174,13 @@ int link(const char *oldpath, const char *newpath)
 	if (xutftowcs_path(woldpath, oldpath) < 0 ||
 		xutftowcs_path(wnewpath, newpath) < 0)
 		return -1;
+
+	if (!do_wlstat(0, wnewpath, &st, wbuf, MAX_PATH)) {
+		/* Delete the file if it exists.
+		 */
+		if (mingw_wunlink(wnewpath))
+			return -1;
+	}
 
 	if (!create_hard_link) {
 		create_hard_link = (T) GetProcAddress(
