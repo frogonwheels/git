@@ -114,7 +114,7 @@ int within_depth(const char *name, int namelen,
  *
  * It returns 0 when there is no match.
  */
-static int match_one(const char *match, const char *name, int namelen)
+int match_one(const char *match, const char *name, int namelen)
 {
 	int matchlen;
 

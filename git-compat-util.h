@@ -85,6 +85,11 @@
 #define _NETBSD_SOURCE 1
 #define _SGI_SOURCE 1
 
+#define symlink_ex(a,b,c) symlink((a),(b))
+#define LINK_UNKNOWN 0
+#define LINK_ISFILE 1
+#define LINK_ISDIR 2
+
 #ifdef WIN32 /* Both MinGW and MSVC */
 #define _WIN32_WINNT 0x0501
 #define WIN32_LEAN_AND_MEAN  /* stops windows.h including winsock.h */
