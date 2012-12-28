@@ -68,7 +68,7 @@ Entering 'sub3'
 $pwd/clone-foo3-sub3-$sub3sha1
 EOF
 
-test_expect_success 'test basic "submodule foreach" usage' '
+test_expect_failure 'test basic "submodule foreach" usage' '
 	git clone super clone &&
 	(
 		cd clone &&
