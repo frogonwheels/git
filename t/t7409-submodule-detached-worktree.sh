@@ -51,7 +51,7 @@ test_expect_success 'submodule on detached working tree' '
 	)
 '
 
-test_expect_success 'submodule on detached working pointed by core.worktree' '
+test_expect_failure 'submodule on detached working pointed by core.worktree' '
 	mkdir home3 &&
 	(
 		cd home3 &&
