@@ -2759,6 +2759,30 @@ int diff_populate_filespec(struct diff_filespec *s, int size_only)
 	return 0;
 }
 
+char *detach_filespec(struct diff_filespec *s, size_t *sz)
+{
+	char *buffer = NULL;
+	if (s->should_free) {
+		s->should_free = 0;
+		buffer = s->data;
+		*sz = s->size;
+		s->data = NULL;
+		s->size = 0;
+		return buffer;
+	} else if (s->should_munmap) {
+		buffer = xcalloc(1, s->size);
+		memcpy(s->data, buffer, s->size);
+		diff_free_filespec_data(s);
+		*sz = s->size;
+		return buffer;
+	} else {
+		*sz = 0;
+		return NULL;
+	}
+
+}
+
+
 void diff_free_filespec_blob(struct diff_filespec *s)
 {
 	if (s->should_free)
