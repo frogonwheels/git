@@ -2736,8 +2736,8 @@ int diff_populate_filespec(struct diff_filespec *s, int size_only)
 		 */
 		if (convert_to_git(s->path, s->data, s->size, &buf, crlf_warn)) {
 			size_t size = 0;
-			munmap(s->data, s->size);
-			s->should_munmap = 0;
+			diff_free_filespec_blob(s);
+
 			s->data = strbuf_detach(&buf, &size);
 			s->size = size;
 			s->should_free = 1;
