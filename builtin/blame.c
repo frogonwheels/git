@@ -153,16 +153,37 @@ int textconv_object(const char *path,
 {
 	struct diff_filespec *df;
 	struct userdiff_driver *textconv;
+	char *newbuf;
+	size_t sz;
 
 	df = alloc_filespec(path);
 	fill_filespec(df, sha1, sha1_valid, mode);
 	textconv = get_textconv(df);
-	if (!textconv) {
-		free_filespec(df);
-		return 0;
-	}
+	if (!textconv || !textconv->textconv) {
+		if (!DIFF_FILE_VALID(df)) {
+			return 0;
+		}
+		if (diff_populate_filespec(df, 0))
+			die("unable to read files to blame");
 
-	*buf_size = fill_textconv(textconv, df, buf);
+		/* This will copy a memory-mapped file if necessary.
+		*/
+		*buf = detach_filespec(df, &sz);
+		*buf_size = sz;
+	} else {
+		*buf_size = fill_textconv(textconv, df, &newbuf);
+		if (df->data == newbuf) {
+			/* This will copy a memory-mapped file if necessary.
+			*/
+			*buf = detach_filespec(df, &sz);
+			*buf_size = sz;
+		} else {
+			/* Just in case the return is not the buffer, make an allocated copy.
+			*/
+			buf = xcalloc(1, *buf_size);
+			memcpy(newbuf, buf, *buf_size);
+		}
+	}
 	free_filespec(df);
 	return 1;
 }
