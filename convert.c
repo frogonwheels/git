@@ -173,7 +173,7 @@ static int crlf_to_git(const char *path, const char *src, size_t len,
 	char *dst;
 
 	if (crlf_action == CRLF_BINARY ||
-	    (crlf_action == CRLF_GUESS && auto_crlf == AUTO_CRLF_FALSE) ||
+	    (crlf_action == CRLF_GUESS && auto_crlf == AUTO_CRLF_FALSE && core_eol != EOL_CRLF) ||
 	    (src && !len))
 		return 0;
 
@@ -734,11 +734,22 @@ static void convert_attrs(struct conv_attrs *ca, const char *path)
 
 	if (!git_check_attr(path, NUM_CONV_ATTRS, ccheck)) {
 		ca->crlf_action = git_path_check_crlf(path, ccheck + 4);
-		if (ca->crlf_action == CRLF_GUESS)
+		if (ca->crlf_action == CRLF_GUESS) {
 			ca->crlf_action = git_path_check_crlf(path, ccheck + 0);
+			/*
+			if (ca->crlf_action == CRLF_GUESS && core_eol == EOL_CRLF)
+				ca->crlf_action = CRLF_CRLF;
+				*/
+		}
 		ca->ident = git_path_check_ident(path, ccheck + 1);
 		ca->drv = git_path_check_convert(path, ccheck + 2);
 		ca->eol_attr = git_path_check_eol(path, ccheck + 3);
+		/*
+		if (ca->eol_attr == EOL_UNSET) {
+			ca->eol_attr = core_eol;
+		}
+		*/
+
 	} else {
 		ca->drv = NULL;
 		ca->crlf_action = CRLF_GUESS;
