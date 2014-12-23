@@ -106,7 +106,7 @@ static enum eol output_eol(enum crlf_action crlf_action)
 		return EOL_LF;
 	case CRLF_GUESS:
 		if (!auto_crlf)
-			return EOL_UNSET;
+			return core_eol;
 		/* fall through */
 	case CRLF_TEXT:
 	case CRLF_AUTO:
@@ -173,7 +173,7 @@ static int crlf_to_git(const char *path, const char *src, size_t len,
 	char *dst;
 
 	if (crlf_action == CRLF_BINARY ||
-	    (crlf_action == CRLF_GUESS && auto_crlf == AUTO_CRLF_FALSE) ||
+	    (crlf_action == CRLF_GUESS && auto_crlf == AUTO_CRLF_FALSE && core_eol != EOL_CRLF) ||
 	    (src && !len))
 		return 0;
 
@@ -1274,7 +1274,7 @@ struct stream_filter *get_stream_filter(const char *path, const unsigned char *s
 	crlf_action = input_crlf_action(ca.crlf_action, ca.eol_attr);
 
 	if ((crlf_action == CRLF_BINARY) || (crlf_action == CRLF_INPUT) ||
-	    (crlf_action == CRLF_GUESS && auto_crlf == AUTO_CRLF_FALSE))
+	    (crlf_action == CRLF_GUESS && auto_crlf == AUTO_CRLF_FALSE && core_eol != EOL_CRLF))
 		filter = cascade_filter(filter, &null_filter_singleton);
 
 	else if (output_eol(crlf_action) == EOL_CRLF &&
