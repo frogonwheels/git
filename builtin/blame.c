@@ -2294,6 +2294,7 @@ static struct commit *fake_working_tree_commit(struct diff_options *opt,
 	struct commit_list **parent_tail, *parent;
 	unsigned char head_sha1[20];
 	struct strbuf buf = STRBUF_INIT;
+	struct strbuf cvt_buf = STRBUF_INIT;
 	const char *ident;
 	time_t now;
 	int size, len;
@@ -2369,6 +2370,13 @@ static struct commit *fake_working_tree_commit(struct diff_options *opt,
 		mode = 0;
 		if (strbuf_read(&buf, 0, 0) < 0)
 			die_errno("failed to read from stdin");
+		if (convert_to_git(path, buf.buf, buf.len, &cvt_buf, SAFE_CRLF_FAIL)) {
+			/* Copy converted path.
+			 */
+			strbuf_release(&buf);
+			buf = cvt_buf;
+		}
+
 	}
 	origin->file.ptr = buf.buf;
 	origin->file.size = buf.len;
